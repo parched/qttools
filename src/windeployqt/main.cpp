@@ -1010,7 +1010,7 @@ static QStringList compilerRunTimeLibs(Platform platform, bool isDebug, unsigned
     QStringList result;
     switch (platform) {
     case WindowsMinGW: { // MinGW: Add runtime libraries
-        static const char *minGwRuntimes[] = {"*gcc_", "*stdc++", "*winpthread"};
+        static const char *minGwRuntimes[] = {"*gcc_s_", "*stdc++", "*winpthread"};
         const QString gcc = findInPath(QStringLiteral("g++.exe"));
         if (gcc.isEmpty()) {
             std::wcerr << "Warning: Cannot find GCC installation directory. g++.exe must be in the path.\n";
@@ -1193,38 +1193,6 @@ static DeployResult deploy(const Options &options,
         *errorMessage = QDir::toNativeSeparators(options.binaries.first()) +  QStringLiteral(" does not seem to be a Qt executable.");
         return result;
     }
-
-    // Some Windows-specific checks: Qt5Core depends on ICU when configured with "-icu". Other than
-    // that, Qt5WebKit has a hard dependency on ICU.
-    if (options.platform & WindowsBased)  {
-        const QStringList qtLibs = dependentQtLibs.filter(QStringLiteral("Qt5Core"), Qt::CaseInsensitive)
-            + dependentQtLibs.filter(QStringLiteral("Qt5WebKit"), Qt::CaseInsensitive);
-        foreach (const QString &qtLib, qtLibs) {
-            QStringList icuLibs = findDependentLibraries(qtLib, options.platform, errorMessage).filter(QStringLiteral("ICU"), Qt::CaseInsensitive);
-            if (!icuLibs.isEmpty()) {
-                // Find out the ICU version to add the data library icudtXX.dll, which does not show
-                // as a dependency.
-                QRegExp numberExpression(QStringLiteral("\\d+"));
-                Q_ASSERT(numberExpression.isValid());
-                const int index = numberExpression.indexIn(icuLibs.front());
-                if (index >= 0)  {
-                    const QString icuVersion = icuLibs.front().mid(index, numberExpression.matchedLength());
-                    if (optVerboseLevel > 1)
-                        std::wcout << "Adding ICU version " << icuVersion << '\n';
-                    icuLibs.push_back(QStringLiteral("icudt") + icuVersion + QLatin1String(windowsSharedLibrarySuffix));
-                }
-                foreach (const QString &icuLib, icuLibs) {
-                    const QString icuPath = findInPath(icuLib);
-                    if (icuPath.isEmpty()) {
-                        *errorMessage = QStringLiteral("Unable to locate ICU library ") + icuLib;
-                        return result;
-                    }
-                    dependentQtLibs.push_back(icuPath);
-                } // foreach icuLib
-                break;
-            } // !icuLibs.isEmpty()
-        } // Qt5Core/Qt5WebKit
-    } // Windows
 
     // Scan Quick2 imports
     QmlImportScanResult qmlScanResult;
@@ -1522,8 +1490,6 @@ int main(int argc, char **argv)
     const QMap<QString, QString> qmakeVariables = queryQMakeAll(&errorMessage);
     const QString xSpec = qmakeVariables.value(QStringLiteral("QMAKE_XSPEC"));
     options.platform = platformFromMkSpec(xSpec);
-    if (options.platform == WindowsMinGW || options.platform == Windows)
-        options.compilerRunTime = true;
 
     {   // Command line
         QCommandLineParser parser;
